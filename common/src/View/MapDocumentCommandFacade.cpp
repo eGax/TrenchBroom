@@ -291,9 +291,7 @@ namespace TrenchBroom {
             unsetEntityModels(allOldChildren);
             unsetEntityDefinitions(allOldChildren);
             unsetTextures(allOldChildren);
-            disconnectGroupsFromLinkSets(allOldChildren);
 
-            connectGroupsToLinkSets(allNewChildren);
             setEntityDefinitions(allNewChildren);
             setEntityModels(allNewChildren);
             setTextures(allNewChildren);
