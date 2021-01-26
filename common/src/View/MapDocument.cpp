@@ -124,6 +124,74 @@
 
 namespace TrenchBroom {
     namespace View {
+        static std::vector<Model::GroupNode*> findLinkedGroups(Model::WorldNode& worldNode, const std::string& linkedGroupId) {
+            auto result = std::vector<Model::GroupNode*>{};
+
+            worldNode.accept(kdl::overload(
+                [] (auto&& thisLambda, Model::WorldNode* w) { w->visitChildren(thisLambda); },
+                [] (auto&& thisLambda, Model::LayerNode* l) { l->visitChildren(thisLambda); },
+                [&](auto&& thisLambda, Model::GroupNode* g) {
+                    if (g->group().linkedGroupId() == linkedGroupId) {
+                        result.push_back(g);
+                    } else {
+                        g->visitChildren(thisLambda);
+                    }
+                },
+                [] (Model::EntityNode*) {},
+                [] (Model::BrushNode*)  {}
+            ));
+
+            return result;
+        }
+
+        template <typename T>
+        static auto findLinkedGroupsToUpdate(Model::WorldNode& worldNode, const std::vector<T*>& nodes, const bool includeGivenNodes) {
+            auto result = std::vector<std::pair<const Model::GroupNode*, std::vector<Model::GroupNode*>>>{};
+
+            const auto addGroupNode = [&](const Model::GroupNode* groupNode) {
+                while (groupNode) {
+                    if (const auto linkedGroupId = groupNode->group().linkedGroupId()) {
+                        auto linkedGroups = findLinkedGroups(worldNode, *linkedGroupId);
+                        if (linkedGroups.size() > 1u) {
+                            result.emplace_back(groupNode, std::move(linkedGroups));
+                            return;
+                        }
+                    }
+                    groupNode = groupNode->containingGroup();
+                }
+            };
+
+            Model::Node::visitAll(nodes, kdl::overload(
+                [] (const Model::WorldNode*) {},
+                [] (const Model::LayerNode*) {},
+                [&](Model::GroupNode* groupNode) {
+                    if (includeGivenNodes) {
+                        addGroupNode(groupNode);
+                    } else {
+                        addGroupNode(groupNode->containingGroup());
+                    }
+                },
+                [&](Model::EntityNode* entityNode) {
+                    addGroupNode(entityNode->containingGroup());
+                },
+                [&](Model::BrushNode* brushNode) {
+                    addGroupNode(brushNode->containingGroup());
+                }
+            ));
+
+            return kdl::vec_sort_and_remove_duplicates(std::move(result));
+        }
+
+        template <typename T>
+        static auto findContainingLinkedGroupsToUpdate(Model::WorldNode& worldNode, const std::vector<T*>& nodes) {
+            return findLinkedGroupsToUpdate(worldNode, nodes, false);
+        }
+
+        template <typename T>
+        static auto findAllLinkedGroupsToUpdate(Model::WorldNode& worldNode, const std::vector<T*>& nodes) {
+            return findLinkedGroupsToUpdate(worldNode, nodes, true);
+        }
+
         /**
          * Applies the given lambda to a copy of the contents of each of the given nodes and returns a vector of pairs of the original node and the modified contents.
          *
@@ -975,7 +1043,7 @@ namespace TrenchBroom {
 
         std::vector<Model::Node*> MapDocument::addNodes(const std::map<Model::Node*, std::vector<Model::Node*>>& nodes) {
             Transaction transaction(this, "Add Objects");
-            const auto result = executeAndStore(AddRemoveNodesCommand::add(nodes));
+            const auto result = executeAndStore(AddRemoveNodesCommand::add(nodes, findAllLinkedGroupsToUpdate(*m_world, kdl::map_keys(nodes))));
             if (!result->success()) {
                 return {};
             }
@@ -992,7 +1060,7 @@ namespace TrenchBroom {
             Transaction transaction(this);
             while (!removableNodes.empty()) {
                 closeRemovedGroups(removableNodes);
-                executeAndStore(AddRemoveNodesCommand::remove(removableNodes));
+                executeAndStore(AddRemoveNodesCommand::remove(removableNodes, findAllLinkedGroupsToUpdate(*m_world, kdl::map_keys(removableNodes))));
 
                 removableNodes = collectRemovableParents(removableNodes);
             }
@@ -1081,7 +1149,7 @@ namespace TrenchBroom {
             std::map<Model::Node*, std::vector<Model::Node*>> removableNodes = collectRemovableParents(nodesToRemove);
             while (!removableNodes.empty()) {
                 closeRemovedGroups(removableNodes);
-                executeAndStore(AddRemoveNodesCommand::remove(removableNodes));
+                executeAndStore(AddRemoveNodesCommand::remove(removableNodes, findAllLinkedGroupsToUpdate(*m_world, kdl::map_keys(removableNodes))));
 
                 removableNodes = collectRemovableParents(removableNodes);
             }
