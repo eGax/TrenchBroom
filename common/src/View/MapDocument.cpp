@@ -2221,6 +2221,26 @@ namespace TrenchBroom {
             ));
         }
 
+        bool MapDocument::setProtectedProperty(const std::string& key, const bool value) {
+            const auto entityNodes = allSelectedEntityNodes();
+            return applyAndSwap(*this, "Set Protected Property", entityNodes, findContainingLinkedGroupsToUpdate(*m_world, entityNodes), kdl::overload(
+                [] (Model::Layer&) { return true; },
+                [] (Model::Group&) { return true; },
+                [&](Model::Entity& entity) {
+                    auto protectedProperties = entity.protectedProperties();
+                    if (value && !kdl::vec_contains(protectedProperties, key)) {
+                        protectedProperties.push_back(key);
+                    } else if (!value && kdl::vec_contains(protectedProperties, key)) {
+                        protectedProperties = kdl::vec_erase(std::move(protectedProperties), key);
+                    }
+                    entity.setProtectedProperties(std::move(protectedProperties));
+                    
+                    return true;
+                },
+                [] (Model::Brush&) { return true; }
+            ));
+        }
+
         bool MapDocument::resizeBrushes(const std::vector<vm::polygon3>& faces, const vm::vec3& delta) {
             const auto nodes = m_selectedNodes.nodes();
             return applyAndSwap(*this, "Resize Brushes", nodes, findContainingLinkedGroupsToUpdate(*m_world, nodes), kdl::overload(

@@ -77,5 +77,35 @@ namespace TrenchBroom {
             CHECK(entityNode->entity().definition() == nullptr);
             CHECK(document->selectionBounds().size() == Model::EntityNode::DefaultBounds.size());
         }
+
+        TEST_CASE_METHOD(SetEntityPropertiesTest, "SetEntityPropertiesTest.setProtectedProperty") {
+            auto* entityNode = new Model::EntityNode{};
+            document->addNodes({{document->parentForNodes(), {entityNode}}});
+
+            document->select(entityNode);
+            
+            SECTION("Set protected property") {
+                document->setProtectedProperty("some_key", true);
+                CHECK_THAT(entityNode->entity().protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"some_key"}));
+                
+                document->undoCommand();
+                CHECK_THAT(entityNode->entity().protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{}));
+            }
+
+            SECTION("Unset protected property") {
+                document->setProtectedProperty("some_key", true);
+                REQUIRE_THAT(entityNode->entity().protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"some_key"}));
+
+                // Ensure that the consecutive SwapNodeContentsCommands are not collated
+                document->deselectAll();            
+                document->select(entityNode);
+
+                document->setProtectedProperty("some_key", false);
+                CHECK_THAT(entityNode->entity().protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{}));
+                
+                document->undoCommand();
+                CHECK_THAT(entityNode->entity().protectedProperties(), Catch::UnorderedEquals(std::vector<std::string>{"some_key"}));
+            }
+        }
     }
 }
